@@ -44,7 +44,9 @@ func NewClient(cfg *config.Config, log *logger.Logger) *Client {
 }
 
 // callLLM executes a streaming chat completion with the given system/user prompts.
-func (d *Client) callLLM(ctx context.Context, sysPrompt, userPrompt, model string, timeoutSec int) (string, error) {
+// session попадает в поле "user" запроса — FreeDeepseekAPI использует его как ключ
+// sticky-сессии DeepSeek Web, чтобы промпты разных агентов не смешивались в одном чате.
+func (d *Client) callLLM(ctx context.Context, sysPrompt, userPrompt, model string, timeoutSec int, session string) (string, error) {
 	if model == "" {
 		model = d.model
 	}
@@ -54,6 +56,7 @@ func (d *Client) callLLM(ctx context.Context, sysPrompt, userPrompt, model strin
 
 	stream, err := d.client.CreateChatCompletionStream(ctx, openai.ChatCompletionRequest{
 		Model: model,
+		User:  session,
 		Messages: []openai.ChatCompletionMessage{
 			{Role: openai.ChatMessageRoleSystem, Content: sysPrompt},
 			{Role: openai.ChatMessageRoleUser, Content: userPrompt},
@@ -87,8 +90,8 @@ func (d *Client) callLLM(ctx context.Context, sysPrompt, userPrompt, model strin
 }
 
 // CallLLM is the public wrapper of callLLM for use by other packages.
-func (d *Client) CallLLM(ctx context.Context, sysPrompt, userPrompt, model string, timeoutSec int) (string, error) {
-	return d.callLLM(ctx, sysPrompt, userPrompt, model, timeoutSec)
+func (d *Client) CallLLM(ctx context.Context, sysPrompt, userPrompt, model string, timeoutSec int, session string) (string, error) {
+	return d.callLLM(ctx, sysPrompt, userPrompt, model, timeoutSec, session)
 }
 
 // ScreeningAnalyze calls the LLM for BUY candidate screening.
@@ -98,7 +101,7 @@ func (d *Client) ScreeningAnalyze(ctx context.Context, req *ScreeningRequest) ([
 	d.logger.Info("screening agent prompt built",
 		"chars", len([]rune(userPrompt)), "tickers", len(req.TickerFeatures))
 
-	rawResponse, err := d.callLLM(ctx, ScreeningSystemPrompt(d.cfg.Trading), userPrompt, d.model, d.cfg.LLM.TimeoutSeconds)
+	rawResponse, err := d.callLLM(ctx, ScreeningSystemPrompt(d.cfg.Trading), userPrompt, d.model, d.cfg.LLM.TimeoutSeconds, "rus-trader-screening")
 	if err != nil {
 		return nil, "", fmt.Errorf("screening agent: %w", err)
 	}
@@ -127,7 +130,7 @@ func (d *Client) PositionAnalyze(ctx context.Context, req *PositionRequest) ([]A
 	d.logger.Info("position manager prompt built",
 		"chars", len([]rune(userPrompt)), "positions", len(req.Positions))
 
-	rawResponse, err := d.callLLM(ctx, positionSystemPrompt, userPrompt, d.model, d.cfg.LLM.TimeoutSeconds)
+	rawResponse, err := d.callLLM(ctx, positionSystemPrompt, userPrompt, d.model, d.cfg.LLM.TimeoutSeconds, "rus-trader-position")
 	if err != nil {
 		return nil, "", fmt.Errorf("position manager: %w", err)
 	}
@@ -161,7 +164,7 @@ func (d *Client) JournalReview(ctx context.Context, req *JournalReviewRequest) (
 	d.logger.Info("journal review prompt built",
 		"chars", len([]rune(userPrompt)), "outcomes", len(req.Outcomes))
 
-	rawResponse, err := d.callLLM(ctx, journalSystemPrompt, userPrompt, model, d.cfg.LLM.TimeoutSeconds)
+	rawResponse, err := d.callLLM(ctx, journalSystemPrompt, userPrompt, model, d.cfg.LLM.TimeoutSeconds, "rus-trader-journal")
 	if err != nil {
 		return nil, "", fmt.Errorf("journal review: %w", err)
 	}

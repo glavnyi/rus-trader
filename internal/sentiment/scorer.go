@@ -45,7 +45,7 @@ func (s *Scorer) ScoreBatch(ctx context.Context, tickerTexts map[string][]string
 		model = config.DefaultLLMCheapModel
 	}
 
-	rawResponse, err := s.aiClient.CallLLM(ctx, sentimentSystemPrompt, userPrompt, model, 60)
+	rawResponse, err := s.aiClient.CallLLM(ctx, sentimentSystemPrompt, userPrompt, model, 60, "rus-trader-sentiment")
 	if err != nil {
 		return nil, fmt.Errorf("sentiment scoring: %w", err)
 	}

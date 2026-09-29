@@ -43,3 +43,6 @@ Thumbs.db
 
 CLAUDE.md
 task.txt
+
+# Build artifacts
+bin/
