@@ -57,8 +57,7 @@ func main() {
 
 	var closed, failed int
 	for _, p := range portfolio.Positions {
-		lots := int64(p.Quantity)
-		if lots <= 0 {
+		if p.Quantity <= 0 {
 			continue
 		}
 
@@ -73,6 +72,19 @@ func main() {
 			}
 		}
 
+		// PortfolioInfo.Quantity — акции, а заявка в лотах. Без пересчёта sell
+		// уходит на shares/lotSize лотов и отклоняется брокером (для UNAC lot=1000).
+		lotSize, err := bc.GetLotSize(uid)
+		if err != nil || lotSize <= 0 {
+			fmt.Fprintf(os.Stderr, "  [FAIL] %s: lot size: %v\n", p.Ticker, err)
+			failed++
+			continue
+		}
+		lots := int64(p.Quantity) / int64(lotSize)
+		if lots < 1 {
+			lots = 1
+		}
+
 		result, err := bc.Sell(uid, lots)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "  [FAIL] %s: sell: %v\n", p.Ticker, err)
@@ -80,7 +92,8 @@ func main() {
 			continue
 		}
 
-		fmt.Printf("  [OK]   %s: sold %d lots @ %.2f\n", p.Ticker, result.ExecutedLots, result.ExecutedPrice)
+		fmt.Printf("  [OK]   %s: sold %d lots (%.0f sh) @ %.4f\n",
+			p.Ticker, lots, p.Quantity, result.ExecutedPrice)
 		closed++
 	}
 

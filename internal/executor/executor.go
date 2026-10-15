@@ -229,10 +229,27 @@ func (e *Executor) executeBuy(d ai.AIDecision) {
 		return
 	}
 
-	if result.ExecutedLots <= 0 || result.ExecutedPrice <= 0 {
-		e.logger.Error("BUY order returned zero lots/price, not saving",
-			"ticker", d.Ticker, "lots", result.ExecutedLots, "price", result.ExecutedPrice)
-		return
+	// Песочница T-Invest иногда возвращает LotsExecuted=0 при фактически исполненном
+	// ордере. Без этого сделка не сохранялась в БД, позиция оставалась "сиротой" и
+	// усыновлялась позже уже без SL/TP (reconcile.go). Поэтому при известной цене
+	// исполнения доверяем запрошенному количеству, а reconcile/watchdog сведут
+	// расхождения на следующем цикле.
+	if result.ExecutedLots <= 0 {
+		if result.ExecutedPrice > 0 {
+			e.logger.Warn("BUY: broker reported zero executed lots, assuming requested lots",
+				"ticker", d.Ticker, "requested_lots", lots, "price", result.ExecutedPrice)
+			result.ExecutedLots = lots
+		} else {
+			e.logger.Error("BUY order returned zero lots/price, not saving",
+				"ticker", d.Ticker, "lots", result.ExecutedLots, "price", result.ExecutedPrice)
+			return
+		}
+	}
+
+	if result.ExecutedPrice <= 0 {
+		result.ExecutedPrice = lastPrice
+		e.logger.Warn("BUY: executed price unavailable, falling back to last quote",
+			"ticker", d.Ticker, "last_quote", lastPrice)
 	}
 
 	executedPrice := result.ExecutedPrice
